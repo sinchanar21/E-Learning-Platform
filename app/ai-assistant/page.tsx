@@ -1,0 +1,276 @@
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+import { Send, Plus, Settings, Trash2, Sparkles, Code, User as UserIcon, Bot } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+
+interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+}
+
+const suggestedPrompts = [
+  'How do I optimize React component performance?',
+  'Explain microservices architecture',
+  'Best practices for database indexing',
+  'How to handle errors in async/await?',
+];
+
+export default function AIAssistantPage() {
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: '1',
+      role: 'assistant',
+      content:
+        "Hey! I'm your AI-powered career assistant. I can help you with course recommendations, technical questions, interview prep, and career guidance. What would you like to learn today?",
+      timestamp: new Date(),
+    },
+  ]);
+  const [inputValue, setInputValue] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSendMessage = async (e?: React.FormEvent, prompt?: string) => {
+    if (e) e.preventDefault();
+    const messageContent = prompt || inputValue;
+    if (!messageContent.trim()) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: messageContent,
+      timestamp: new Date(),
+    };
+
+    setMessages((prev) => [...prev, userMessage]);
+    setInputValue('');
+    setIsLoading(true);
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...messages, userMessage].map(m => ({ role: m.role, content: m.content }))
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch AI response');
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let assistantContent = '';
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: '',
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+
+      while (true) {
+        const { done, value } = await reader!.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        assistantContent += chunk;
+
+        setMessages((prev) => {
+          const lastMsg = prev[prev.length - 1];
+          if (lastMsg.role === 'assistant') {
+            return [...prev.slice(0, -1), { ...lastMsg, content: assistantContent }];
+          }
+          return prev;
+        });
+      }
+    } catch (error) {
+      console.error('Chat error:', error);
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again later.',
+        timestamp: new Date()
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSuggestedPrompt = (prompt: string) => {
+    handleSendMessage(undefined, prompt);
+  };
+
+  return (
+    <div className="flex h-screen bg-background transition-colors duration-300">
+      {/* Sidebar */}
+      <div className="hidden md:flex w-64 border-r border-border bg-card transition-colors duration-300 flex-col dark:glass-card-lg">
+        <div className="p-6 border-b border-border">
+          <button className="button-primary w-full flex items-center justify-center gap-2">
+            <Plus className="w-5 h-5" />
+            New Chat
+          </button>
+        </div>
+
+        {/* Chat history */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          <button className="w-full text-left px-4 py-3 rounded-lg bg-primary/10 text-primary font-medium transition-colors hover:bg-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30">
+            Current Conversation
+          </button>
+          <button className="w-full text-left px-4 py-3 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-white/5 transition-colors">
+            Interview Prep Tips
+          </button>
+          <button className="w-full text-left px-4 py-3 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-white/5 transition-colors">
+            System Design Q&A
+          </button>
+          <button className="w-full text-left px-4 py-3 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted dark:hover:bg-white/5 transition-colors">
+            Resume Review
+          </button>
+        </div>
+
+        {/* Settings */}
+        <div className="p-4 border-t border-border space-y-2">
+          <button className="w-full flex items-center gap-2 px-4 py-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors dark:hover:bg-white/10">
+            <Settings className="w-4 h-4" />
+            Settings
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors dark:hover:bg-white/10">
+            <Trash2 className="w-4 h-4" />
+            Clear History
+          </button>
+        </div>
+      </div>
+
+      {/* Chat area */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="border-b border-border bg-card transition-colors duration-300 p-6 dark:glass-card-lg">
+          <div className="max-w-4xl mx-auto flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-r from-primary to-secondary flex items-center justify-center text-white">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-foreground">AI Career Assistant</h1>
+              <p className="text-sm text-muted-foreground">Powered by advanced AI</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="max-w-4xl mx-auto space-y-6">
+            {messages.map((message) => (
+              <div
+                key={message.id}
+                className={`flex gap-4 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                {message.role === 'assistant' && (
+                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                    <Bot className="w-5 h-5 text-primary" />
+                  </div>
+                )}
+
+                <div
+                  className={`max-w-md lg:max-w-2xl rounded-2xl px-5 py-4 ${message.role === 'user'
+                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                      : 'card-elevated glass-lg shadow-xl'
+                    } transition-all duration-300 animate-in fade-in zoom-in-95`}
+                >
+                  <div className={`prose prose-sm dark:prose-invert max-w-none ${message.role === 'user' ? 'text-white' : 'text-foreground'}`}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
+                  <p className={`text-[10px] mt-3 opacity-40 font-medium ${message.role === 'user' ? 'text-right' : 'text-left'}`}>
+                    {message.timestamp.toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+
+                {message.role === 'user' && (
+                  <div className="w-8 h-8 rounded-full bg-secondary/20 flex items-center justify-center flex-shrink-0">
+                    <UserIcon className="w-5 h-5 text-secondary" />
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="glass-lg p-4 rounded-lg">
+                  <div className="flex gap-2">
+                    <div className="w-2 h-2 rounded-full bg-slate-400 animate-bounce" />
+                    <div
+                      className="w-2 h-2 rounded-full bg-slate-400 animate-bounce"
+                      style={{ animationDelay: '0.1s' }}
+                    />
+                    <div
+                      className="w-2 h-2 rounded-full bg-slate-400 animate-bounce"
+                      style={{ animationDelay: '0.2s' }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+
+        {/* Input area */}
+        <div className="border-t border-border bg-card transition-colors duration-300 p-6 dark:glass-card-lg">
+          <div className="max-w-4xl mx-auto space-y-4">
+            {/* Suggested prompts */}
+            {messages.length === 1 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {suggestedPrompts.map((prompt, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleSuggestedPrompt(prompt)}
+                    className="flex items-start gap-3 p-3 card-elevated rounded-lg text-left group transition-all duration-200 hover:border-primary/30"
+                  >
+                    <Code className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                    <span className="text-sm text-muted-foreground group-hover:text-foreground">{prompt}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Input form */}
+            <form onSubmit={handleSendMessage} className="flex gap-3">
+              <input
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Ask me anything about your engineering career..."
+                className="flex-1 px-6 py-3 bg-input border border-border rounded-lg outline-none text-foreground placeholder:text-muted-foreground dark:bg-white/10 dark:border-white/20 transition-colors"
+                disabled={isLoading}
+              />
+              <button
+                type="submit"
+                disabled={isLoading || !inputValue.trim()}
+                className="button-primary disabled:opacity-50 flex items-center gap-2"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
